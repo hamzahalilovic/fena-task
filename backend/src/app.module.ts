@@ -7,7 +7,9 @@ import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({
+      isGlobal: true, 
+    }),
     DatabaseModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -18,6 +20,8 @@ import { QueueModule } from './queue/queue.module';
       database: process.env.DB_NAME || 'fena_task',
       autoLoadEntities: true,
       synchronize: true,
+      retryAttempts: 3, 
+      retryDelay: 3000, 
     }),
     JobsModule,
     QueueModule,

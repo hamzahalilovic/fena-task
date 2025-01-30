@@ -1,65 +1,130 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from '../jobs/job.entity';
-import { Kafka } from 'kafkajs';
+import { Kafka, Consumer } from 'kafkajs';
 
 @Injectable()
-export class QueueConsumer {
+export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
   private kafka = new Kafka({
     clientId: 'email-queue',
     brokers: [process.env.KAFKA_BROKER || 'localhost:9092'],
   });
 
-  private consumer = this.kafka.consumer({ groupId: 'email-group' });
+  private consumer: Consumer;
   private logger = new Logger(QueueConsumer.name);
+  private isConnected = false; 
 
   constructor(
     @InjectRepository(Job) private readonly jobRepo: Repository<Job>,
   ) {}
 
+  async onModuleInit() {
+    this.logger.log('Initializing Kafka Consumer');
+    await this.consumeJobs();
+  }
+
   async consumeJobs() {
-    await this.consumer.connect();
-    await this.consumer.subscribe({ topic: 'email-jobs', fromBeginning: true });
+    if (this.isConnected) {
+      this.logger.warn(
+        'consumer is already running',
+      );
+      return;
+    }
 
-    await this.consumer.run({
-      eachMessage: async ({ message }) => {
-        if (!message.value) {
-          this.logger.warn('got a message with no value, skipping.');
-          return;
-        }
+    try {
+      this.consumer = this.kafka.consumer({ groupId: 'email-consumer' });
+      await this.consumer.connect();
+      this.isConnected = true;
+      this.logger.log('Kafka consumer connected');
 
-        const jobData = JSON.parse(message.value.toString());
-        const { jobId, totalEmails } = jobData;
+      await this.consumer.subscribe({
+        topic: 'email-jobs',
+        fromBeginning: false,
+      });
+      this.logger.log('Subscribed to topic: email-jobs');
 
-        this.logger.log(`Processing job ${jobId} with ${totalEmails} emails.`);
+      await this.consumer.run({
+        eachMessage: async ({ message }) => {
+          if (!message.value) {
+            this.logger.warn('Received a message with no value, skipping');
+            return;
+          }
 
-        let job = await this.jobRepo.findOneBy({ id: jobId });
-        if (!job) {
-          this.logger.warn(`Job ${jobId} not found in the database.`);
-          return;
-        }
+          try {
+            const jobData = JSON.parse(message.value.toString());
+            const { jobId, totalEmails } = jobData;
 
-        job.status = 'in-progress';
-        await this.jobRepo.save(job);
+            this.logger.log(
+              `Processing job ${jobId} with ${totalEmails} emails`,
+            );
 
-        for (let i = 0; i < totalEmails; i += 100) {
-          await new Promise((resolve) => setTimeout(resolve, 2000)); 
-          job.processedEmails = Math.min(
-            job.processedEmails + 100,
-            totalEmails,
-          );
-          job.status =
-            job.processedEmails >= totalEmails ? 'completed' : 'in-progress';
-          await this.jobRepo.save(job);
+            let job = await this.jobRepo.findOneBy({ id: jobId });
+            if (!job) {
+              this.logger.warn(`Job ${jobId} not found in the database`);
+              return;
+            }
 
-          this.logger.log(
-            `Job ${jobId}: Processed ${job.processedEmails}/${totalEmails} emails.`,
-          );
-        }
+            job.status = 'in-progress';
+            await this.jobRepo.save(job);
 
-        this.logger.log(`Job ${jobId} completed.`);
-      },
-    });
+            for (let i = 0; i < totalEmails; i += 100) {
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              job.processedEmails = Math.min(
+                job.processedEmails + 100,
+                totalEmails,
+              );
+              job.status =
+                job.processedEmails >= totalEmails
+                  ? 'completed'
+                  : 'in-progress';
+              await this.jobRepo.save(job);
+
+              this.logger.log(
+                `Job ${jobId}: Processed ${job.processedEmails}/${totalEmails} emails`,
+              );
+            }
+
+            this.logger.log(`Job ${jobId} completed`);
+          } catch (error) {
+            this.logger.error(
+              `Error processing job ${error.message}`,
+              error.stack,
+            );
+          }
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Kafka Consumer failed to start ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  // graceful shutdown handler
+  async shutdown() {
+    try {
+      if (this.isConnected) {
+        this.logger.warn('Kafka Consumer is shutting down');
+        await this.consumer.disconnect();
+        this.isConnected = false;
+        this.logger.log('Kafka Consumer Disconnected');
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error shutting down Kafka Consumer ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.shutdown();
   }
 }
