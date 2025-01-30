@@ -7,6 +7,9 @@ RUN yarn install
 
 COPY . .
 
+ARG ENV_FILE=./backend/.env.local
+ENV ENV_FILE=$ENV_FILE
+
 EXPOSE 3000
 
 CMD ["yarn", "start"]

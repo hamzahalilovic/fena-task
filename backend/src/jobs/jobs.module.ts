@@ -4,11 +4,12 @@ import { Job } from './job.entity';
 import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 import { JobsGateway } from './jobs.gateway';
+import { DatabaseModule } from '../database/database.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Job])],
+  imports: [DatabaseModule, TypeOrmModule.forFeature([Job])],
   controllers: [JobsController],
   providers: [JobsService, JobsGateway],
-  exports: [JobsService, JobsGateway], 
+  exports: [JobsService, JobsGateway],
 })
 export class JobsModule {}
