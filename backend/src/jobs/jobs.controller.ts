@@ -15,16 +15,19 @@ import { JobsGateway } from './jobs.gateway';
 export class JobsController {
   constructor(
     private readonly jobsService: JobsService,
-    private readonly jobsGateway: JobsGateway, 
+    private readonly jobsGateway: JobsGateway,
   ) {}
 
   @Post()
   async createJob(@Body('totalEmails') totalEmails: number) {
     const job = await this.jobsService.createJob(totalEmails);
-
+    if (!job)
+      throw new HttpException(
+        'Job creation failed',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     // notify frontend that new job is created
     this.jobsGateway.sendJobCreated(job); // emitting via jobs gateway
-
     return job;
   }
 
