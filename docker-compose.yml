@@ -42,13 +42,8 @@ services:
     depends_on:
       - db
       - kafka
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASS: password
-      DB_NAME: fena_task
-      KAFKA_BROKER: kafka:9092
+    env_file:
+      - ${ENV_FILE:-./backend/.env.local}
     ports:
       - "3000:3000"
     volumes:
