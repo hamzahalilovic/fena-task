@@ -8,16 +8,24 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-
 import { JobsService } from './jobs.service';
+import { JobsGateway } from './jobs.gateway';
 
 @Controller('jobs')
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly jobsGateway: JobsGateway, 
+  ) {}
 
   @Post()
   async createJob(@Body('totalEmails') totalEmails: number) {
-    return this.jobsService.createJob(totalEmails);
+    const job = await this.jobsService.createJob(totalEmails);
+
+    // notify frontend that new job is created
+    this.jobsGateway.sendJobCreated(job); // emitting via jobs gateway
+
+    return job;
   }
 
   @Get(':id')
@@ -36,6 +44,7 @@ export class JobsController {
     if (!deleted) {
       throw new HttpException('Job not found', HttpStatus.NOT_FOUND);
     }
+
     return { message: `Job ${id} deleted successfully` };
   }
 }

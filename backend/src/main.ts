@@ -18,7 +18,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  logger.log(`🚀 Backend is running on http://localhost:${port}`);
+  logger.log(`Backend is running on http://localhost:${port}`);
 
   // graceful shutdown handler
   process.on('SIGINT', async () => {

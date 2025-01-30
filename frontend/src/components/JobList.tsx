@@ -12,6 +12,9 @@ import {
 } from "@chakra-ui/react";
 import { getAllJobs, deleteJob } from "../api/jobs";
 import { Job } from "../types/job";
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:3000");
 
 const JobList = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -22,20 +25,6 @@ const JobList = () => {
     const fetchJobs = async () => {
       try {
         const data: Job[] = await getAllJobs();
-
-        // trigger toast notifications for status changes
-        data.forEach((job) => {
-          const existingJob = jobs.find((j) => j.id === job.id);
-          if (existingJob && existingJob.status !== job.status) {
-            toast({
-              title: `Job ${job.id} is now ${job.status}`,
-              status: job.status === "completed" ? "success" : "info",
-              duration: 3000,
-              isClosable: true,
-            });
-          }
-        });
-
         setJobs(data);
       } catch (error) {
         console.error("Fetching jobs failed", error);
@@ -44,9 +33,36 @@ const JobList = () => {
     };
 
     fetchJobs();
-    const interval = setInterval(fetchJobs, 3000);
-    return () => clearInterval(interval);
-  }, [jobs, toast]);
+
+    // checking for new jobs
+    socket.on("jobCreated", (newJob) => {
+      setJobs((prevJobs) => {
+        const jobExists = prevJobs.some((job) => job.id === newJob.id);
+        return jobExists ? prevJobs : [...prevJobs, newJob]; // makeing sure we don't add the same job twice
+      });
+    });
+
+    // checking for job updates
+    socket.on("jobUpdate", (updatedJob) => {
+      setJobs((prevJobs) =>
+        prevJobs.map((job) =>
+          job.id === updatedJob.jobId
+            ? {
+                ...job,
+                status: updatedJob.status,
+                processedEmails:
+                  updatedJob.processedEmails ?? job.processedEmails,
+              }
+            : job
+        )
+      );
+    });
+
+    return () => {
+      socket.off("jobCreated");
+      socket.off("jobUpdate");
+    };
+  }, []);
 
   const handleDelete = async (jobId: string) => {
     try {

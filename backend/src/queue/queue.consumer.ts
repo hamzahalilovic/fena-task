@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from '../jobs/job.entity';
 import { Kafka, Consumer } from 'kafkajs';
+import { JobsGateway } from '../jobs/jobs.gateway';
 
 @Injectable()
 export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
@@ -18,43 +19,49 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
 
   private consumer: Consumer;
   private logger = new Logger(QueueConsumer.name);
-  private isConnected = false; 
+  private isConsuming = false; //  flag to track if consumer is running to prevent duplicate initialization
 
   constructor(
     @InjectRepository(Job) private readonly jobRepo: Repository<Job>,
-  ) {}
-
-  async onModuleInit() {
-    this.logger.log('Initializing Kafka Consumer');
-    await this.consumeJobs();
+    private readonly jobsGateway: JobsGateway,
+  ) {
+    this.consumer = this.kafka.consumer({ groupId: 'email-consumer' });
   }
 
-  async consumeJobs() {
-    if (this.isConnected) {
+  async onModuleInit() {
+    if (this.isConsuming) {
       this.logger.warn(
-        'consumer is already running',
+        'Kafka Consumer is already running, skipping duplicate initialization',
       );
       return;
     }
 
-    try {
-      this.consumer = this.kafka.consumer({ groupId: 'email-consumer' });
-      await this.consumer.connect();
-      this.isConnected = true;
-      this.logger.log('Kafka consumer connected');
+    this.logger.log('Initializing Kafka Consumer...');
+    this.isConsuming = true;
+    await this.consumeJobs();
+  }
 
-      await this.consumer.subscribe({
-        topic: 'email-jobs',
-        fromBeginning: false,
-      });
-      this.logger.log('Subscribed to topic: email-jobs');
+  async consumeJobs() {
+    try {
+      await this.consumer.connect();
+      this.logger.log('Kafka Consumer Connected');
+
+      const subscriptions = await this.consumer.describeGroup();
+      if (!subscriptions.members.length) {
+        await this.consumer.subscribe({
+          topic: 'email-jobs',
+          fromBeginning: false,
+        });
+        this.logger.log('Subscribed to topic: email-jobs');
+      } else {
+        this.logger.warn(
+          'Consumer already subscribed, skipping subscription',
+        );
+      }
 
       await this.consumer.run({
         eachMessage: async ({ message }) => {
-          if (!message.value) {
-            this.logger.warn('Received a message with no value, skipping');
-            return;
-          }
+          if (!message.value) return;
 
           try {
             const jobData = JSON.parse(message.value.toString());
@@ -66,12 +73,13 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
 
             let job = await this.jobRepo.findOneBy({ id: jobId });
             if (!job) {
-              this.logger.warn(`Job ${jobId} not found in the database`);
+              this.logger.warn(`Job ${jobId} not found`);
               return;
             }
 
             job.status = 'in-progress';
             await this.jobRepo.save(job);
+            this.jobsGateway.sendJobUpdate(job);
 
             for (let i = 0; i < totalEmails; i += 100) {
               await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -83,7 +91,9 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
                 job.processedEmails >= totalEmails
                   ? 'completed'
                   : 'in-progress';
+
               await this.jobRepo.save(job);
+              this.jobsGateway.sendJobUpdate(job);
 
               this.logger.log(
                 `Job ${jobId}: Processed ${job.processedEmails}/${totalEmails} emails`,
@@ -93,7 +103,7 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
             this.logger.log(`Job ${jobId} completed`);
           } catch (error) {
             this.logger.error(
-              `Error processing job ${error.message}`,
+              `Error processing job: ${error.message}`,
               error.stack,
             );
           }
@@ -101,24 +111,21 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error) {
       this.logger.error(
-        `Kafka Consumer failed to start ${error.message}`,
+        `Kafka Consumer failed to start: ${error.message}`,
         error.stack,
       );
     }
   }
 
-  // graceful shutdown handler
   async shutdown() {
     try {
-      if (this.isConnected) {
-        this.logger.warn('Kafka Consumer is shutting down');
-        await this.consumer.disconnect();
-        this.isConnected = false;
-        this.logger.log('Kafka Consumer Disconnected');
-      }
+      this.logger.warn('Kafka consumer shutting down...');
+      await this.consumer.disconnect();
+      this.isConsuming = false;
+      this.logger.log('Kafka consumer disconnected');
     } catch (error) {
       this.logger.error(
-        `Error shutting down Kafka Consumer ${error.message}`,
+        `Error shutting down Kafka consumer: ${error.message}`,
         error.stack,
       );
     }
