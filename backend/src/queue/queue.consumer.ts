@@ -47,16 +47,14 @@ export class QueueConsumer implements OnModuleInit, OnModuleDestroy {
       this.logger.log('Kafka Consumer Connected');
 
       const subscriptions = await this.consumer.describeGroup();
-      if (!subscriptions.members.length) {
+      if (subscriptions.members.length === 0) {
         await this.consumer.subscribe({
           topic: 'email-jobs',
           fromBeginning: false,
         });
         this.logger.log('Subscribed to topic: email-jobs');
       } else {
-        this.logger.warn(
-          'Consumer already subscribed, skipping subscription',
-        );
+        this.logger.warn('Consumer already subscribed, skipping subscription');
       }
 
       await this.consumer.run({
