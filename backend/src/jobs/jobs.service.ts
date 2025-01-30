@@ -52,4 +52,13 @@ export class JobsService {
 
     return this.jobRepo.save(job);
   }
+
+  async deleteJob(id: string): Promise<boolean> {
+    const job = await this.jobRepo.findOneBy({ id });
+    if (!job) {
+      return false; 
+    }
+    await this.jobRepo.remove(job);
+    return true;
+  }
 }

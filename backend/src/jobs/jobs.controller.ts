@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Delete,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+
 import { JobsService } from './jobs.service';
 
 @Controller('jobs')
@@ -18,5 +28,14 @@ export class JobsController {
   @Get()
   async getAllJobs() {
     return this.jobsService.getAllJobs();
+  }
+
+  @Delete(':id')
+  async deleteJob(@Param('id') id: string) {
+    const deleted = await this.jobsService.deleteJob(id);
+    if (!deleted) {
+      throw new HttpException('Job not found', HttpStatus.NOT_FOUND);
+    }
+    return { message: `Job ${id} deleted successfully` };
   }
 }
