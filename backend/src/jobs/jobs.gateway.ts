@@ -12,6 +12,10 @@ export class JobsGateway {
   private logger = new Logger(JobsGateway.name);
 
   sendJobUpdate(job: Job) {
+    if (!this.server) {
+      this.logger.error('WebSocket server is not initialized');
+      return;
+    }
     this.server.emit('jobUpdate', {
       jobId: job.id,
       status: job.status,
@@ -22,7 +26,11 @@ export class JobsGateway {
   }
 
   sendJobCreated(job: Job) {
-    this.server.emit('jobCreated', job); 
+    if (!this.server) {
+      this.logger.error('WebSocket server is not initialized');
+      return;
+    }
+    this.server.emit('jobCreated', job);
     this.logger.log(`Emitted new job created event for ${job.id}`);
   }
 }
