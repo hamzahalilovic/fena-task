@@ -34,16 +34,15 @@ const JobList = () => {
 
     fetchJobs();
 
-    // checking for new jobs
-    socket.on("jobCreated", (newJob) => {
+    // defining event handlers separately to prevent duplicate listeners
+    const handleJobCreated = (newJob: Job) => {
       setJobs((prevJobs) => {
         const jobExists = prevJobs.some((job) => job.id === newJob.id);
         return jobExists ? prevJobs : [...prevJobs, newJob]; // makeing sure we don't add the same job twice
       });
-    });
+    };
 
-    // checking for job updates
-    socket.on("jobUpdate", (updatedJob) => {
+    const handleJobUpdate = (updatedJob: any) => {
       setJobs((prevJobs) =>
         prevJobs.map((job) =>
           job.id === updatedJob.jobId
@@ -56,11 +55,15 @@ const JobList = () => {
             : job
         )
       );
-    });
+    };
 
+    socket.on("jobCreated", handleJobCreated);
+    socket.on("jobUpdate", handleJobUpdate);
+
+    //remove event listeners on unmount
     return () => {
-      socket.off("jobCreated");
-      socket.off("jobUpdate");
+      socket.off("jobCreated", handleJobCreated);
+      socket.off("jobUpdate", handleJobUpdate);
     };
   }, []);
 
