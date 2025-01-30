@@ -1,14 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { JobsModule } from './jobs/jobs.module';
-import { DatabaseModule } from './database/database.module';
-import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot(),
-    DatabaseModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -19,8 +15,6 @@ import { QueueModule } from './queue/queue.module';
       autoLoadEntities: true,
       synchronize: true,
     }),
-    JobsModule,
-    QueueModule,
   ],
 })
-export class AppModule {}
+export class DatabaseModule {}
