@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from './job.entity';
@@ -18,9 +18,22 @@ export class JobsService {
   ) {}
 
   async createJob(totalEmails: number): Promise<Job> {
-    const job = this.jobRepo.create({ totalEmails, status: 'pending' });
+    // prevent non integer or negative values when accessing outside frontend
+    if (!Number.isInteger(totalEmails) || totalEmails <= 0) {
+      throw new HttpException(
+        'Total emails must be a positive integer greater than zero',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const job = this.jobRepo.create({
+      totalEmails,
+      status: 'pending',
+      processedEmails: 0,
+    });
     const savedJob = await this.jobRepo.save(job);
 
+    
     await this.producer.connect();
     await this.producer.send({
       topic: 'email-jobs',
@@ -43,7 +56,10 @@ export class JobsService {
   async updateJobProgress(id: string, processedEmails: number) {
     const job = await this.jobRepo.findOneBy({ id });
     if (!job) {
-      throw new Error(`Job with ID ${id} not found`);
+      throw new HttpException(
+        `Job with ID ${id} not found`,
+        HttpStatus.NOT_FOUND,
+      );
     }
 
     job.processedEmails = processedEmails;
@@ -56,7 +72,7 @@ export class JobsService {
   async deleteJob(id: string): Promise<boolean> {
     const job = await this.jobRepo.findOneBy({ id });
     if (!job) {
-      return false; 
+      return false;
     }
     await this.jobRepo.remove(job);
     return true;
