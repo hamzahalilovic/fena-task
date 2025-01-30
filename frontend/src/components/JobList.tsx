@@ -1,11 +1,21 @@
 import { useState, useEffect } from "react";
-import { Box, Text, VStack, Spinner, Progress } from "@chakra-ui/react";
-import { getAllJobs } from "../api/jobs";
-import { Job } from "../types/job"; 
+import {
+  Box,
+  Text,
+  VStack,
+  Button,
+  Spinner,
+  Progress,
+  useToast,
+} from "@chakra-ui/react";
+import { getAllJobs, deleteJob } from "../api/jobs";
+import { Job } from "../types/job";
 
 const JobList = () => {
-  const [jobs, setJobs] = useState<Job[]>([]); 
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  const toast = useToast();
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -22,6 +32,16 @@ const JobList = () => {
     const interval = setInterval(fetchJobs, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleDelete = async (jobId: string) => {
+    try {
+      await deleteJob(jobId);
+      toast({ title: "Job deleted successfully", status: "success" });
+      setJobs((prevJobs) => prevJobs.filter((job) => job.id !== jobId));
+    } catch (error) {
+      toast({ title: "Failed to delete job", status: "error" });
+    }
+  };
 
   return (
     <Box p={4} borderWidth={1} borderRadius="lg">
@@ -40,6 +60,13 @@ const JobList = () => {
                 size="sm"
                 colorScheme="green"
               />
+              <Button
+                colorScheme="red"
+                size="sm"
+                onClick={() => handleDelete(job.id)}
+              >
+                Delete
+              </Button>
             </Box>
           ))}
         </VStack>
